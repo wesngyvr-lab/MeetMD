@@ -2,7 +2,7 @@ import { formatTranscript } from '../lib/markdown.js';
 import { buildFilename, resolveCollision } from '../lib/filename.js';
 import {
   getStoredVaultFolder,
-  ensurePermission,
+  checkPermission,
   listExistingNames,
   writeFile,
 } from '../lib/filesystem.js';
@@ -86,12 +86,16 @@ async function saveAndClear(tabId, recovered) {
 async function tryWrite(filename, content) {
   const { handle } = await getStoredVaultFolder();
   if (!handle) return false;
-  if (!(await ensurePermission(handle))) return false;
+  if (!(await checkPermission(handle))) return false;
 
   const existing = await listExistingNames(handle);
   const finalName = resolveCollision(filename, (n) => existing.has(n));
-  await writeFile(handle, finalName, content);
-  return true;
+  try {
+    await writeFile(handle, finalName, content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Recovery on service-worker startup: scan for orphan drafts and write them
@@ -101,7 +105,7 @@ async function recoverOrphanDrafts() {
   const orphanKeys = Object.keys(all).filter((k) => k.startsWith(DRAFT_KEY_PREFIX));
 
   for (const key of orphanKeys) {
-    const tabId = key.slice(DRAFT_KEY_PREFIX.length);
+    const tabId = Number(key.slice(DRAFT_KEY_PREFIX.length));
     const s = all[key];
     if (!s || !s.startedAt) continue;
 

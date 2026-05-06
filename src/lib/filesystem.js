@@ -31,6 +31,10 @@ export async function ensurePermission(handle) {
   return (await handle.requestPermission(opts)) === 'granted';
 }
 
+export async function checkPermission(handle) {
+  return (await handle.queryPermission({ mode: 'readwrite' })) === 'granted';
+}
+
 export async function listExistingNames(handle) {
   const names = new Set();
   for await (const entry of handle.values()) {
