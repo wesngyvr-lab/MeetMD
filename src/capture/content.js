@@ -41,7 +41,7 @@ function onCallStart() {
   speakerBuffer = "";
   textBuffer = "";
   timestampBuffer = "";
-  emit({ type: "CALL_STARTED", tabId: null, startedAt: state.startedAt.toISOString() });
+  emit({ type: "CALL_STARTED", startedAt: state.startedAt.toISOString() });
   enableCaptionsIfNeeded();
   attachCaptionObserver();
   state.checkpointTimer = setInterval(checkpoint, 30_000);
@@ -181,7 +181,7 @@ function appendEntry(speaker, text, timestamp) {
   const ts = timestamp || formatTimestamp(new Date());
   const entry = { speaker, timestamp: ts, text };
   state.entries.push(entry);
-  emit({ type: "CAPTION", tabId: null, entry });
+  emit({ type: "CAPTION", entry });
 }
 
 function formatTimestamp(d) {
@@ -193,7 +193,6 @@ function checkpoint() {
   if (!state.inCall) return;
   emit({
     type: "CHECKPOINT",
-    tabId: null,
     transcript: state.entries,
     startedAt: state.startedAt.toISOString(),
   });
@@ -234,7 +233,6 @@ function onCallEnd() {
 
   emit({
     type: "CALL_ENDED",
-    tabId: null,
     transcript: state.entries,
     startedAt: state.startedAt.toISOString(),
   });
