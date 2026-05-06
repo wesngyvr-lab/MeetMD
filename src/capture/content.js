@@ -274,7 +274,11 @@ async function waitForElement(selector, text) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
   }
-  return document.querySelector(selector);
+  return text
+    ? Array.from(document.querySelectorAll(selector)).find(
+        (el) => el.textContent === text
+      )
+    : document.querySelector(selector);
 }
 
 // ---------------------------------------------------------------------------
