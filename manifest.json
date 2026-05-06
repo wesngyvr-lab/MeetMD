@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "MeetMD",
+  "version": "0.1.0",
+  "description": "Capture Google Meet captions and save them as markdown in your Obsidian vault.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://meet.google.com/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["src/capture/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "MeetMD"
+  }
+}
