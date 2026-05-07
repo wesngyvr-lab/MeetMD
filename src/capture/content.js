@@ -319,29 +319,6 @@ async function waitForElement(selector, text) {
 // leave-call click, which satisfies handle.requestPermission().
 // ---------------------------------------------------------------------------
 
-const VAULT_DB_NAME = 'meetmd';
-const VAULT_DB_VERSION = 1;
-const VAULT_STORE = 'kv';
-const VAULT_HANDLE_KEY = 'vaultFolderHandle';
-
-function openVaultDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(VAULT_DB_NAME, VAULT_DB_VERSION);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function getStoredHandle() {
-  const db = await openVaultDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(VAULT_STORE, 'readonly');
-    const req = tx.objectStore(VAULT_STORE).get(VAULT_HANDLE_KEY);
-    req.onsuccess = () => resolve(req.result || null);
-    req.onerror = () => reject(req.error);
-  });
-}
-
 function resolveCollision(name, existing) {
   if (!existing.has(name)) return name;
   const dotIdx = name.lastIndexOf('.');
@@ -352,12 +329,11 @@ function resolveCollision(name, existing) {
   return `${stem} (${i})${ext}`;
 }
 
-async function writeTranscriptFile(filename, content) {
+async function writeTranscriptFile(filename, content, handle) {
   diag('writeTranscriptFile: starting');
-  const handle = await getStoredHandle();
   if (!handle) {
-    diag('writeTranscriptFile: no handle in IDB');
-    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
+    diag('writeTranscriptFile: no handle passed');
+    return { ok: false, reason: 'No vault folder handle' };
   }
 
   const opts = { mode: 'readwrite' };
@@ -385,15 +361,15 @@ async function writeTranscriptFile(filename, content) {
     diag('writeTranscriptFile: wrote', finalName);
     return { ok: true, filename: finalName };
   } catch (err) {
-    diag('writeTranscriptFile: write error', err);
-    return { ok: false, reason: err.message || 'File write error' };
+    diag('writeTranscriptFile: write error', err && err.message);
+    return { ok: false, reason: (err && err.message) || 'File write error' };
   }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== 'WRITE_FILE') return false;
   diag('WRITE_FILE message received in content script');
-  writeTranscriptFile(message.filename, message.content)
+  writeTranscriptFile(message.filename, message.content, message.handle)
     .then(sendResponse)
     .catch((err) => {
       diag('writeTranscriptFile threw:', err && err.message);

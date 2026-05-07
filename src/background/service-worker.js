@@ -1,5 +1,6 @@
 import { formatTranscript } from '../lib/markdown.js';
 import { buildFilename } from '../lib/filename.js';
+import { getStoredVaultFolder } from '../lib/filesystem.js';
 
 const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 
@@ -128,9 +129,14 @@ async function saveAndClear(tabId, recovered) {
   }
 }
 
-function delegateWrite(tabId, filename, content) {
+async function delegateWrite(tabId, filename, content) {
+  const { handle } = await getStoredVaultFolder();
+  if (!handle) {
+    console.log('[MeetMD] delegateWrite: no folder handle in IDB');
+    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
+  }
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { type: 'WRITE_FILE', filename, content }, (response) => {
+    chrome.tabs.sendMessage(tabId, { type: 'WRITE_FILE', filename, content, handle }, (response) => {
       if (chrome.runtime.lastError) {
         console.log('[MeetMD] delegateWrite: tab message failed', chrome.runtime.lastError.message);
         resolve({ ok: false, reason: chrome.runtime.lastError.message });
