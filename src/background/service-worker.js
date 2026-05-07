@@ -14,9 +14,26 @@ const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 // every CHECKPOINT and CAPTION.
 const tabState = new Map();
 
+function notify(title, message) {
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icon.png', // optional; Chrome falls back to extension icon
+      title,
+      message,
+    });
+  } catch (e) {
+    // Notifications can throw on some platforms if icon is missing — log and continue.
+    console.warn('[MeetMD] notify failed:', e);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender) => {
-  // Messages from the popup have no sender.tab — handle them first.
+  console.log('[MeetMD] message received:', message.type, 'from tab', sender.tab?.id);
+
+  // FLUSH_DRAFTS comes from the popup (no sender.tab) — handle before tabId guard
   if (message.type === 'FLUSH_DRAFTS') {
+    console.log('[MeetMD] FLUSH_DRAFTS — running orphan recovery');
     recoverOrphanDrafts();
     return;
   }
@@ -73,9 +90,14 @@ async function clearDraft(tabId) {
 
 async function saveAndClear(tabId, recovered) {
   const s = tabState.get(tabId);
-  if (!s) return;
+  if (!s) {
+    console.log('[MeetMD] saveAndClear: no state for tab', tabId);
+    return;
+  }
+  console.log('[MeetMD] saveAndClear: tab=' + tabId, 'entries=' + s.entries.length, 'recovered=' + recovered);
 
   const startedAt = new Date(s.startedAt);
+  const captionCount = s.entries.length;
   const markdown = formatTranscript({ startedAt, entries: s.entries });
 
   let filename = buildFilename(startedAt);
@@ -83,24 +105,42 @@ async function saveAndClear(tabId, recovered) {
     filename = filename.replace(/\.md$/, ' (recovered).md');
   }
 
-  const ok = await tryWrite(filename, markdown);
-  if (ok) await clearDraft(tabId);
-  // If write failed, leave the draft in place — it'll be retried at next
-  // service-worker startup or recovered on next install.
+  const result = await tryWrite(filename, markdown);
+
+  if (result.ok) {
+    await clearDraft(tabId);
+    if (captionCount === 0) {
+      notify('MeetMD — saved (empty)', `Saved empty transcript: ${result.filename}`);
+    } else {
+      notify('MeetMD — saved', `${result.filename} (${captionCount} captions)`);
+    }
+  } else {
+    notify('MeetMD — save failed', result.reason || 'Unknown error');
+    // If write failed, leave the draft in place — it'll be retried at next
+    // service-worker startup or recovered on next install.
+  }
 }
 
 async function tryWrite(filename, content) {
   const { handle } = await getStoredVaultFolder();
-  if (!handle) return false;
-  if (!(await checkPermission(handle))) return false;
+  if (!handle) {
+    console.log('[MeetMD] tryWrite: no folder handle');
+    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
+  }
+  if (!(await checkPermission(handle))) {
+    console.log('[MeetMD] tryWrite: permission denied');
+    return { ok: false, reason: 'Vault folder permission denied — re-grant via MeetMD popup.' };
+  }
 
   const existing = await listExistingNames(handle);
   const finalName = resolveCollision(filename, (n) => existing.has(n));
   try {
     await writeFile(handle, finalName, content);
-    return true;
-  } catch {
-    return false;
+    console.log('[MeetMD] tryWrite: wrote', finalName);
+    return { ok: true, filename: finalName };
+  } catch (e) {
+    console.log('[MeetMD] tryWrite: write error', e);
+    return { ok: false, reason: e.message || 'File write error' };
   }
 }
 
@@ -109,6 +149,7 @@ async function tryWrite(filename, content) {
 async function recoverOrphanDrafts() {
   const all = await chrome.storage.local.get(null);
   const orphanKeys = Object.keys(all).filter((k) => k.startsWith(DRAFT_KEY_PREFIX));
+  console.log('[MeetMD] recoverOrphanDrafts: found', orphanKeys.length, 'drafts');
 
   for (const key of orphanKeys) {
     const tabId = Number(key.slice(DRAFT_KEY_PREFIX.length));

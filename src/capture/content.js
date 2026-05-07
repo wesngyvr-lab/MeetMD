@@ -1,6 +1,8 @@
 // src/capture/content.js
 // Vendored caption-capture from TranscripTonic. See CAPTURE.md for upstream SHA.
 
+console.log('[MeetMD] content script loaded on', location.href);
+
 const state = {
   startedAt: null,
   entries: [],
@@ -35,6 +37,7 @@ function detectCallStart() {
 
 function onCallStart() {
   if (state.inCall) return;
+  console.log('[MeetMD] call start detected');
   state.inCall = true;
   state.startedAt = new Date();
   state.entries = [];
@@ -61,7 +64,10 @@ function enableCaptionsIfNeeded() {
     // Re-check at click time — icon may have changed if user manually enabled
     const offIcons = selectElements(".google-symbols", "closed_caption_off");
     if (offIcons.length > 0) {
+      console.log('[MeetMD] auto-enabling captions');
       offIcons[0].click();
+    } else {
+      console.log('[MeetMD] captions already on (or button not found)');
     }
   });
 }
@@ -76,7 +82,11 @@ function enableCaptionsIfNeeded() {
 // ---------------------------------------------------------------------------
 function attachCaptionObserver() {
   waitForElement('div[role="region"][tabindex="0"]').then((targetNode) => {
-    if (!targetNode) return;
+    if (!targetNode) {
+      console.log('[MeetMD] caption observer: container not found');
+      return;
+    }
+    console.log('[MeetMD] caption observer attached to', targetNode);
 
     const mutationConfig = {
       childList: true,
@@ -179,6 +189,7 @@ function flushBuffer() {
 function appendEntry(speaker, text, timestamp) {
   // Use provided timestamp (captured at start of utterance) or fall back to now
   const ts = timestamp || formatTimestamp(new Date());
+  console.log('[MeetMD] caption:', speaker, '—', text);
   const entry = { speaker, timestamp: ts, text };
   state.entries.push(entry);
   emit({ type: "CAPTION", entry });
@@ -221,6 +232,7 @@ function watchForLeaveCall() {
 
 function onCallEnd() {
   if (!state.inCall) return;
+  console.log('[MeetMD] call end detected, entries:', state.entries.length);
   state.inCall = false;
 
   // Flush any remaining buffered caption before reporting call end
