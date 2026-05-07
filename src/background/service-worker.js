@@ -12,7 +12,7 @@ function notify(title, message) {
   try {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icon.png', // optional; Chrome falls back to extension icon
+      iconUrl: chrome.runtime.getURL('icon.png'),
       title,
       message,
     });

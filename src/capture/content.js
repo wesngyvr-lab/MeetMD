@@ -376,7 +376,12 @@ async function writeTranscriptFile(filename, content) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== 'WRITE_FILE') return false;
-  writeTranscriptFile(message.filename, message.content).then(sendResponse);
+  writeTranscriptFile(message.filename, message.content)
+    .then(sendResponse)
+    .catch((err) => {
+      console.log('[MeetMD] writeTranscriptFile threw:', err && err.message, err);
+      sendResponse({ ok: false, reason: (err && err.message) || 'Unhandled error' });
+    });
   return true; // keep channel open for async response
 });
 
