@@ -1,11 +1,5 @@
 import { formatTranscript } from '../lib/markdown.js';
-import { buildFilename, resolveCollision } from '../lib/filename.js';
-import {
-  getStoredVaultFolder,
-  checkPermission,
-  listExistingNames,
-  writeFile,
-} from '../lib/filesystem.js';
+import { buildFilename } from '../lib/filename.js';
 
 const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 
@@ -94,18 +88,27 @@ async function saveAndClear(tabId, recovered) {
     console.log('[MeetMD] saveAndClear: no state for tab', tabId);
     return;
   }
-  console.log('[MeetMD] saveAndClear: tab=' + tabId, 'entries=' + s.entries.length, 'recovered=' + recovered);
+  const captionCount = s.entries.length;
+  console.log('[MeetMD] saveAndClear: tab=' + tabId, 'entries=' + captionCount, 'recovered=' + recovered);
 
   const startedAt = new Date(s.startedAt);
-  const captionCount = s.entries.length;
   const markdown = formatTranscript({ startedAt, entries: s.entries });
-
   let filename = buildFilename(startedAt);
   if (recovered) {
     filename = filename.replace(/\.md$/, ' (recovered).md');
   }
 
-  const result = await tryWrite(filename, markdown);
+  if (recovered) {
+    // Recovered drafts cannot be written here — the originating tab is gone,
+    // so there's no content script with user activation to delegate to. Leave
+    // the draft in storage; a future popup-driven flush will handle it.
+    console.log('[MeetMD] saveAndClear: leaving recovered draft for popup-driven flush');
+    notify('MeetMD — pending', `1 transcript pending. Open MeetMD popup to save.`);
+    return;
+  }
+
+  // Delegate write to the content script in the originating tab.
+  const result = await delegateWrite(tabId, filename, markdown);
 
   if (result.ok) {
     await clearDraft(tabId);
@@ -116,32 +119,20 @@ async function saveAndClear(tabId, recovered) {
     }
   } else {
     notify('MeetMD — save failed', result.reason || 'Unknown error');
-    // If write failed, leave the draft in place — it'll be retried at next
-    // service-worker startup or recovered on next install.
   }
 }
 
-async function tryWrite(filename, content) {
-  const { handle } = await getStoredVaultFolder();
-  if (!handle) {
-    console.log('[MeetMD] tryWrite: no folder handle');
-    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
-  }
-  if (!(await checkPermission(handle))) {
-    console.log('[MeetMD] tryWrite: permission denied');
-    return { ok: false, reason: 'Vault folder permission denied — re-grant via MeetMD popup.' };
-  }
-
-  const existing = await listExistingNames(handle);
-  const finalName = resolveCollision(filename, (n) => existing.has(n));
-  try {
-    await writeFile(handle, finalName, content);
-    console.log('[MeetMD] tryWrite: wrote', finalName);
-    return { ok: true, filename: finalName };
-  } catch (e) {
-    console.log('[MeetMD] tryWrite: write error', e);
-    return { ok: false, reason: e.message || 'File write error' };
-  }
+function delegateWrite(tabId, filename, content) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { type: 'WRITE_FILE', filename, content }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.log('[MeetMD] delegateWrite: tab message failed', chrome.runtime.lastError.message);
+        resolve({ ok: false, reason: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(response || { ok: false, reason: 'No response from content script' });
+    });
+  });
 }
 
 // Recovery on service-worker startup: scan for orphan drafts and write them

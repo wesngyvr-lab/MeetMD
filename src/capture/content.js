@@ -292,6 +292,91 @@ async function waitForElement(selector, text) {
 }
 
 // ---------------------------------------------------------------------------
+// WRITE_FILE handler
+// The service worker formats the markdown and sends WRITE_FILE here. We do
+// the actual file write because permission grants from the popup don't
+// transfer to the SW — but the content script has user activation from the
+// leave-call click, which satisfies handle.requestPermission().
+// ---------------------------------------------------------------------------
+
+const VAULT_DB_NAME = 'meetmd';
+const VAULT_DB_VERSION = 1;
+const VAULT_STORE = 'kv';
+const VAULT_HANDLE_KEY = 'vaultFolderHandle';
+
+function openVaultDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(VAULT_DB_NAME, VAULT_DB_VERSION);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getStoredHandle() {
+  const db = await openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(VAULT_STORE, 'readonly');
+    const req = tx.objectStore(VAULT_STORE).get(VAULT_HANDLE_KEY);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function resolveCollision(name, existing) {
+  if (!existing.has(name)) return name;
+  const dotIdx = name.lastIndexOf('.');
+  const stem = dotIdx === -1 ? name : name.slice(0, dotIdx);
+  const ext = dotIdx === -1 ? '' : name.slice(dotIdx);
+  let i = 2;
+  while (existing.has(`${stem} (${i})${ext}`)) i += 1;
+  return `${stem} (${i})${ext}`;
+}
+
+async function writeTranscriptFile(filename, content) {
+  console.log('[MeetMD] writeTranscriptFile: starting');
+  const handle = await getStoredHandle();
+  if (!handle) {
+    console.log('[MeetMD] writeTranscriptFile: no handle in IDB');
+    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
+  }
+
+  const opts = { mode: 'readwrite' };
+  let perm = await handle.queryPermission(opts);
+  console.log('[MeetMD] writeTranscriptFile: queryPermission ->', perm);
+  if (perm !== 'granted') {
+    perm = await handle.requestPermission(opts);
+    console.log('[MeetMD] writeTranscriptFile: requestPermission ->', perm);
+  }
+  if (perm !== 'granted') {
+    return { ok: false, reason: 'Vault folder permission denied' };
+  }
+
+  try {
+    const existing = new Set();
+    for await (const entry of handle.values()) existing.add(entry.name);
+    const finalName = resolveCollision(filename, existing);
+    const fileHandle = await handle.getFileHandle(finalName, { create: true });
+    const writable = await fileHandle.createWritable();
+    try {
+      await writable.write(content);
+    } finally {
+      await writable.close();
+    }
+    console.log('[MeetMD] writeTranscriptFile: wrote', finalName);
+    return { ok: true, filename: finalName };
+  } catch (err) {
+    console.log('[MeetMD] writeTranscriptFile: write error', err);
+    return { ok: false, reason: err.message || 'File write error' };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== 'WRITE_FILE') return false;
+  writeTranscriptFile(message.filename, message.content).then(sendResponse);
+  return true; // keep channel open for async response
+});
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 detectCallStart();
