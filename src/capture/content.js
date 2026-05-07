@@ -20,7 +20,11 @@ let textBuffer = "";
 let timestampBuffer = "";
 
 function emit(message) {
-  chrome.runtime.sendMessage(message);
+  try {
+    chrome.runtime.sendMessage(message);
+  } catch (e) {
+    // Extension was reloaded; this content script's runtime is gone. Silent.
+  }
 }
 
 // ---------------------------------------------------------------------------

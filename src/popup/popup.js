@@ -1,4 +1,4 @@
-import { pickVaultFolder, getStoredVaultFolder, ensurePermission } from '../lib/filesystem.js';
+import { pickVaultFolder, getStoredVaultFolder, checkPermission } from '../lib/filesystem.js';
 
 const statusEl = document.getElementById('status');
 const pickBtn = document.getElementById('pickBtn');
@@ -10,12 +10,12 @@ async function refresh() {
     pickBtn.textContent = 'Pick your Meetings folder';
     return;
   }
-  const ok = await ensurePermission(handle);
+  const ok = await checkPermission(handle);
   if (ok) {
     statusEl.innerHTML = `Saving to: <strong>${name}</strong>`;
     pickBtn.textContent = 'Change folder';
   } else {
-    statusEl.textContent = `Permission lost for "${name}". Re-grant access:`;
+    statusEl.textContent = `Permission lost for "${name}". Click below to re-grant.`;
     pickBtn.textContent = 'Re-grant access';
   }
 }
