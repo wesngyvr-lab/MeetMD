@@ -1,27 +1,60 @@
-// File System Access API wrapper. Stores the granted folder handle in
-// chrome.storage.local for re-use across sessions.
+// File System Access API wrapper. The directory handle is persisted in
+// IndexedDB (chrome.storage.local does not reliably structured-clone
+// FileSystemDirectoryHandle).
 
-const STORAGE_KEY = 'meetmd:vaultFolderHandle';
-const STORAGE_KEY_NAME = 'meetmd:vaultFolderName';
+const DB_NAME = 'meetmd';
+const DB_VERSION = 1;
+const STORE = 'kv';
+const HANDLE_KEY = 'vaultFolderHandle';
+const NAME_KEY = 'vaultFolderName';
 
-export async function pickVaultFolder() {
-  const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-  await persistHandle(handle);
-  return handle;
-}
-
-async function persistHandle(handle) {
-  await chrome.storage.local.set({
-    [STORAGE_KEY]: handle,
-    [STORAGE_KEY_NAME]: handle.name,
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }
 
+function withStore(mode, fn) {
+  return openDB().then((db) =>
+    new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      const store = tx.objectStore(STORE);
+      const result = fn(store);
+      tx.oncomplete = () => resolve(result instanceof IDBRequest ? result.result : result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    })
+  );
+}
+
+async function idbGet(key) {
+  return withStore('readonly', (store) => store.get(key));
+}
+
+async function idbSet(key, value) {
+  return withStore('readwrite', (store) => {
+    store.put(value, key);
+  });
+}
+
+export async function pickVaultFolder() {
+  const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  await idbSet(HANDLE_KEY, handle);
+  await idbSet(NAME_KEY, handle.name);
+  return handle;
+}
+
 export async function getStoredVaultFolder() {
-  const result = await chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_NAME]);
+  const handle = await idbGet(HANDLE_KEY);
+  const name = await idbGet(NAME_KEY);
   return {
-    handle: result[STORAGE_KEY] || null,
-    name: result[STORAGE_KEY_NAME] || null,
+    handle: handle || null,
+    name: name || null,
   };
 }
 
@@ -46,6 +79,9 @@ export async function listExistingNames(handle) {
 export async function writeFile(handle, filename, content) {
   const fileHandle = await handle.getFileHandle(filename, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(content);
-  await writable.close();
+  try {
+    await writable.write(content);
+  } finally {
+    await writable.close();
+  }
 }

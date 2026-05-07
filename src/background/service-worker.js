@@ -15,6 +15,12 @@ const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 const tabState = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender) => {
+  // Messages from the popup have no sender.tab — handle them first.
+  if (message.type === 'FLUSH_DRAFTS') {
+    recoverOrphanDrafts();
+    return;
+  }
+
   const tabId = sender.tab?.id;
   if (!tabId) return;
 
@@ -109,9 +115,20 @@ async function recoverOrphanDrafts() {
     const s = all[key];
     if (!s || !s.startedAt) continue;
 
+    if (await tabStillOpen(tabId)) continue; // live tab — let it finish naturally
+
     tabState.set(tabId, s);
     await saveAndClear(tabId, /* recovered */ true);
   }
+}
+
+function tabStillOpen(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.get(tabId, () => {
+      // chrome.tabs.get throws via runtime.lastError when the tab doesn't exist
+      resolve(!chrome.runtime.lastError);
+    });
+  });
 }
 
 recoverOrphanDrafts();

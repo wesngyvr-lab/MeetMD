@@ -23,6 +23,7 @@ async function refresh() {
 pickBtn.addEventListener('click', async () => {
   try {
     await pickVaultFolder();
+    chrome.runtime.sendMessage({ type: 'FLUSH_DRAFTS' });
     await refresh();
   } catch (err) {
     if (err.name !== 'AbortError') {
