@@ -1,7 +1,7 @@
 // src/capture/content.js
 // Vendored caption-capture from TranscripTonic. See CAPTURE.md for upstream SHA.
 
-console.log('[MeetMD] content script loaded on', location.href);
+diag('content script loaded on', location.href);
 
 const state = {
   startedAt: null,
@@ -27,6 +27,22 @@ function emit(message) {
   }
 }
 
+function diag(msg, data) {
+  console.log('[MeetMD]', msg, data !== undefined ? data : '');
+  emit({ type: 'DIAG', msg, data: data === undefined ? null : safeData(data) });
+}
+
+// Make diagnostic data structured-clone-safe (errors stringify, etc).
+function safeData(d) {
+  if (d instanceof Error) return { error: d.message, name: d.name };
+  try {
+    JSON.stringify(d);
+    return d;
+  } catch {
+    return String(d);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Call-start detection
 // TranscripTonic: waits for .google-symbols icon with text "call_end" to appear
@@ -41,7 +57,7 @@ function detectCallStart() {
 
 function onCallStart() {
   if (state.inCall) return;
-  console.log('[MeetMD] call start detected');
+  diag('call start detected');
   state.inCall = true;
   state.startedAt = new Date();
   state.entries = [];
@@ -68,10 +84,10 @@ function enableCaptionsIfNeeded() {
     // Re-check at click time — icon may have changed if user manually enabled
     const offIcons = selectElements(".google-symbols", "closed_caption_off");
     if (offIcons.length > 0) {
-      console.log('[MeetMD] auto-enabling captions');
+      diag('auto-enabling captions');
       offIcons[0].click();
     } else {
-      console.log('[MeetMD] captions already on (or button not found)');
+      diag('captions already on (or button not found)');
     }
   });
 }
@@ -87,10 +103,10 @@ function enableCaptionsIfNeeded() {
 function attachCaptionObserver() {
   waitForElement('div[role="region"][tabindex="0"]').then((targetNode) => {
     if (!targetNode) {
-      console.log('[MeetMD] caption observer: container not found');
+      diag('caption observer: container not found');
       return;
     }
-    console.log('[MeetMD] caption observer attached to', targetNode);
+    diag('caption observer attached');
 
     const mutationConfig = {
       childList: true,
@@ -193,7 +209,7 @@ function flushBuffer() {
 function appendEntry(speaker, text, timestamp) {
   // Use provided timestamp (captured at start of utterance) or fall back to now
   const ts = timestamp || formatTimestamp(new Date());
-  console.log('[MeetMD] caption:', speaker, '—', text);
+  diag('caption', speaker + ' — ' + text);
   const entry = { speaker, timestamp: ts, text };
   state.entries.push(entry);
   emit({ type: "CAPTION", entry });
@@ -236,7 +252,7 @@ function watchForLeaveCall() {
 
 function onCallEnd() {
   if (!state.inCall) return;
-  console.log('[MeetMD] call end detected, entries:', state.entries.length);
+  diag('call end detected, entries:', state.entries.length);
   state.inCall = false;
 
   // Flush any remaining buffered caption before reporting call end
@@ -337,19 +353,19 @@ function resolveCollision(name, existing) {
 }
 
 async function writeTranscriptFile(filename, content) {
-  console.log('[MeetMD] writeTranscriptFile: starting');
+  diag('writeTranscriptFile: starting');
   const handle = await getStoredHandle();
   if (!handle) {
-    console.log('[MeetMD] writeTranscriptFile: no handle in IDB');
+    diag('writeTranscriptFile: no handle in IDB');
     return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
   }
 
   const opts = { mode: 'readwrite' };
   let perm = await handle.queryPermission(opts);
-  console.log('[MeetMD] writeTranscriptFile: queryPermission ->', perm);
+  diag('writeTranscriptFile: queryPermission ->', perm);
   if (perm !== 'granted') {
     perm = await handle.requestPermission(opts);
-    console.log('[MeetMD] writeTranscriptFile: requestPermission ->', perm);
+    diag('writeTranscriptFile: requestPermission ->', perm);
   }
   if (perm !== 'granted') {
     return { ok: false, reason: 'Vault folder permission denied' };
@@ -366,20 +382,21 @@ async function writeTranscriptFile(filename, content) {
     } finally {
       await writable.close();
     }
-    console.log('[MeetMD] writeTranscriptFile: wrote', finalName);
+    diag('writeTranscriptFile: wrote', finalName);
     return { ok: true, filename: finalName };
   } catch (err) {
-    console.log('[MeetMD] writeTranscriptFile: write error', err);
+    diag('writeTranscriptFile: write error', err);
     return { ok: false, reason: err.message || 'File write error' };
   }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== 'WRITE_FILE') return false;
+  diag('WRITE_FILE message received in content script');
   writeTranscriptFile(message.filename, message.content)
     .then(sendResponse)
     .catch((err) => {
-      console.log('[MeetMD] writeTranscriptFile threw:', err && err.message, err);
+      diag('writeTranscriptFile threw:', err && err.message);
       sendResponse({ ok: false, reason: (err && err.message) || 'Unhandled error' });
     });
   return true; // keep channel open for async response

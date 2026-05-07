@@ -32,6 +32,12 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     return;
   }
 
+  // NEW: surface content-script diagnostics in the SW console
+  if (message.type === 'DIAG') {
+    console.log('[MeetMD/cs tab=' + (sender.tab?.id ?? '?') + ']', message.msg, message.data ?? '');
+    return;
+  }
+
   const tabId = sender.tab?.id;
   if (!tabId) return;
 
