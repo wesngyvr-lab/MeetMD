@@ -18,6 +18,10 @@
   ],
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "MeetMD"
+    "default_title": "MeetMD",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
   }
 }
