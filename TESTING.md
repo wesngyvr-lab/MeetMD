@@ -6,8 +6,7 @@ Run this before each release. Not all scenarios apply to v1; skip what's not rel
 
 - [ ] Fresh install: load unpacked, popup says "No pending drafts" and flush button is disabled.
 - [ ] `chrome://settings/downloads`: "Ask where to save each file" is OFF.
-- [ ] `~/Downloads/MeetMD` symlink points at the vault (`ls -la ~/Downloads/ | grep MeetMD`).
-- [x] **First-run symlink check** (verified 2026-06-11): Chrome writes through the symlink — 9 recovered drafts landed in the vault root.
+- [x] Symlink delivery (optional, currently OFF — see README): Chrome writes through a `~/Downloads/MeetMD` → vault symlink; verified 2026-06-11 with 9 recovered drafts.
 - [ ] Popup folder setting: change the subfolder, save, next transcript lands in the new path; empty value saves to Downloads root.
 
 ## Standard meeting
@@ -15,7 +14,7 @@ Run this before each release. Not all scenarios apply to v1; skip what's not rel
 - [ ] Join a Meet call. Captions auto-enable if they were off.
 - [ ] Speak; observe captions in Meet.
 - [ ] Leave the call.
-- [ ] Vault root contains a new file `YYYY-MM-DD HHMM Meeting.md` (via the `Downloads/MeetMD` symlink).
+- [ ] `~/Downloads/MeetMD/` contains a new file `YYYY-MM-DD HHMM Meeting.md`.
 - [ ] File has correct frontmatter (date, time, type, participants, source).
 - [ ] File body has speaker wikilinks and timestamps.
 
