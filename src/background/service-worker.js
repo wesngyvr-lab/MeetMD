@@ -1,6 +1,8 @@
 import { formatTranscript } from '../lib/markdown.js';
 import { buildFilename } from '../lib/filename.js';
-import { getStoredVaultFolder } from '../lib/filesystem.js';
+import { textToDataUrl } from '../lib/download.js';
+
+const DOWNLOAD_SUBFOLDER = 'MeetMD';
 
 const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 
@@ -105,17 +107,7 @@ async function saveAndClear(tabId, recovered) {
     filename = filename.replace(/\.md$/, ' (recovered).md');
   }
 
-  if (recovered) {
-    // Recovered drafts cannot be written here — the originating tab is gone,
-    // so there's no content script with user activation to delegate to. Leave
-    // the draft in storage; a future popup-driven flush will handle it.
-    console.log('[MeetMD] saveAndClear: leaving recovered draft for popup-driven flush');
-    notify('MeetMD — pending', `1 transcript pending. Open MeetMD popup to save.`);
-    return;
-  }
-
-  // Delegate write to the content script in the originating tab.
-  const result = await delegateWrite(tabId, filename, markdown);
+  const result = await downloadTranscript(filename, markdown);
 
   if (result.ok) {
     await clearDraft(tabId);
@@ -129,21 +121,27 @@ async function saveAndClear(tabId, recovered) {
   }
 }
 
-async function delegateWrite(tabId, filename, content) {
-  const { handle } = await getStoredVaultFolder();
-  if (!handle) {
-    console.log('[MeetMD] delegateWrite: no folder handle in IDB');
-    return { ok: false, reason: 'No vault folder picked yet — open MeetMD popup to set one.' };
-  }
+// chrome.downloads works from the service worker with no user gesture and no
+// permission handshake — unlike the FS Access API that sank the v0.1
+// architecture (see docs/superpowers/dev-log/2026-05-07-shelved-postmortem.md).
+function downloadTranscript(filename, content) {
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { type: 'WRITE_FILE', filename, content, handle }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.log('[MeetMD] delegateWrite: tab message failed', chrome.runtime.lastError.message);
-        resolve({ ok: false, reason: chrome.runtime.lastError.message });
-        return;
+    chrome.downloads.download(
+      {
+        url: textToDataUrl(content),
+        filename: `${DOWNLOAD_SUBFOLDER}/${filename}`,
+        conflictAction: 'uniquify',
+      },
+      (downloadId) => {
+        if (chrome.runtime.lastError || downloadId === undefined) {
+          const reason = chrome.runtime.lastError?.message || 'Download did not start';
+          console.log('[MeetMD] downloadTranscript failed:', reason);
+          resolve({ ok: false, reason });
+          return;
+        }
+        resolve({ ok: true, filename });
       }
-      resolve(response || { ok: false, reason: 'No response from content script' });
-    });
+    );
   });
 }
 
