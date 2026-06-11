@@ -14,7 +14,7 @@ function notify(title, message) {
   try {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('icon.png'),
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title,
       message,
     });
