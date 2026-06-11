@@ -1,7 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 128 128">
   <rect x="0" y="0" width="128" height="128" rx="26" fill="#176673"/>
-  <text x="64" y="62" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="46" fill="#ffffff">MD</text>
-  <rect x="20" y="78" width="88" height="30" rx="9" fill="#ffffff"/>
-  <rect x="29" y="86" width="42" height="6" rx="3" fill="#176673" opacity="0.85"/>
-  <rect x="29" y="96" width="62" height="6" rx="3" fill="#176673" opacity="0.45"/>
+  <!-- video camera body + lens -->
+  <rect x="22" y="28" width="54" height="40" rx="9" fill="#ffffff"/>
+  <path d="M82 42 L102 32 a3 3 0 0 1 4 3 v26 a3 3 0 0 1 -4 3 L82 54 Z" fill="#ffffff"/>
+  <!-- recording dot -->
+  <circle cx="36" cy="42" r="5.5" fill="#e0503c"/>
+  <!-- caption / transcript bar -->
+  <rect x="22" y="78" width="84" height="30" rx="9" fill="#ffffff"/>
+  <rect x="31" y="86" width="42" height="6" rx="3" fill="#176673" opacity="0.85"/>
+  <rect x="31" y="96" width="60" height="6" rx="3" fill="#176673" opacity="0.45"/>
 </svg>
