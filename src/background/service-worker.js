@@ -1,8 +1,7 @@
 import { formatTranscript } from '../lib/markdown.js';
 import { buildFilename } from '../lib/filename.js';
 import { textToDataUrl } from '../lib/download.js';
-
-const DOWNLOAD_SUBFOLDER = 'MeetMD';
+import { getSubfolder } from '../lib/settings.js';
 
 const DRAFT_KEY_PREFIX = 'meetmd:draft:';
 
@@ -124,12 +123,13 @@ async function saveAndClear(tabId, recovered) {
 // chrome.downloads works from the service worker with no user gesture and no
 // permission handshake — unlike the FS Access API that sank the v0.1
 // architecture (see docs/superpowers/dev-log/2026-05-07-shelved-postmortem.md).
-function downloadTranscript(filename, content) {
+async function downloadTranscript(filename, content) {
+  const subfolder = await getSubfolder();
   return new Promise((resolve) => {
     chrome.downloads.download(
       {
         url: textToDataUrl(content),
-        filename: `${DOWNLOAD_SUBFOLDER}/${filename}`,
+        filename: subfolder ? `${subfolder}/${filename}` : filename,
         conflictAction: 'uniquify',
       },
       (downloadId) => {

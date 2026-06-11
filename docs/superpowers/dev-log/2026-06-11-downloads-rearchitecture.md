@@ -23,9 +23,11 @@ First attempt was a launchd `WatchPaths` agent moving `~/Downloads/MeetMD/*.md` 
 
 Adopted instead: `~/Downloads/MeetMD` is a symlink to the vault root (`~/Workspace/WN Main`), matching Wesley's flat `YYYY-MM-DD HHMM Title.md` meeting-note convention (no `Meetings/` subfolder exists). Chrome writes through the symlink; no daemon, no TCC.
 
-## Open risk (verify on first real call)
+## Open risk — RESOLVED 2026-06-11
 
-Chrome *may* resolve symlinks during download-path sanitization and refuse or redirect the write. Plain-FS writes through the symlink work; only Chrome's download machinery is unverified, and that requires a real extension-initiated download. If Chrome refuses:
+Chrome *may* resolve symlinks during download-path sanitization and refuse or redirect the write — **verified it does not**: on extension reload, orphan recovery flushed 9 May-era drafts via `chrome.downloads`, and all 9 landed in the vault root through the symlink. The downloads write path and symlink delivery are both confirmed working end-to-end.
+
+Fallbacks kept for reference in case a future Chrome version changes symlink handling:
 
 - Fallback A: real `Downloads/MeetMD/` folder + macOS **Folder Actions** (Folder Actions Dispatcher has its own TCC identity and prompts properly, unlike raw launchd).
 - Fallback B: real folder, move files manually/with a Terminal-run script.

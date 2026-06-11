@@ -7,7 +7,8 @@ Run this before each release. Not all scenarios apply to v1; skip what's not rel
 - [ ] Fresh install: load unpacked, popup says "No pending drafts" and flush button is disabled.
 - [ ] `chrome://settings/downloads`: "Ask where to save each file" is OFF.
 - [ ] `~/Downloads/MeetMD` symlink points at the vault (`ls -la ~/Downloads/ | grep MeetMD`).
-- [ ] **First-run symlink check:** after the first real save, confirm the file landed in the vault, not a Chrome-created real folder. If Chrome refused the symlink, see fallbacks in `docs/superpowers/dev-log/2026-06-11-downloads-rearchitecture.md`.
+- [x] **First-run symlink check** (verified 2026-06-11): Chrome writes through the symlink — 9 recovered drafts landed in the vault root.
+- [ ] Popup folder setting: change the subfolder, save, next transcript lands in the new path; empty value saves to Downloads root.
 
 ## Standard meeting
 
