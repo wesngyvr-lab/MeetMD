@@ -8,6 +8,7 @@ const state = {
   entries: [],
   observer: null,
   checkpointTimer: null,
+  observerTimer: null,
   inCall: false,
 };
 
@@ -79,17 +80,42 @@ function onCallStart() {
 // of a live button is harmless because Meet toggles it back. We guard with a
 // check: only click if the off-state icon is still present.
 // ---------------------------------------------------------------------------
-function enableCaptionsIfNeeded() {
-  waitForElement(".google-symbols", "closed_caption_off").then(() => {
-    // Re-check at click time — icon may have changed if user manually enabled
-    const offIcons = selectElements(".google-symbols", "closed_caption_off");
-    if (offIcons.length > 0) {
-      diag('auto-enabling captions');
-      offIcons[0].click();
-    } else {
-      diag('captions already on (or button not found)');
+// Meet renamed the captions icon in late Oct 2026 from "closed_caption_off" to
+// "translate_cc" (upstream TranscripTonic v3.4.4). Match both. The new icon
+// text no longer changes with state, so read aria-pressed on the button instead.
+const CAPTIONS_ICON_TEXTS = ["closed_caption_off", "translate_cc"];
+
+function getCaptionsPressedState() {
+  const icon = Array.from(document.querySelectorAll(".google-symbols")).find(
+    (el) => CAPTIONS_ICON_TEXTS.includes(el.textContent || "")
+  );
+  const button = icon && icon.closest("button");
+  return button ? button.getAttribute("aria-pressed") : null;
+}
+
+// Upstream v3.4.5: press Meet's "c" shortcut, then confirm through aria-pressed
+// and retry, because Meet can drop the first keypress while its shortcut
+// handler loads. Never press "c" once captions are on: it toggles them off.
+async function enableCaptionsIfNeeded() {
+  await waitForElement(".google-symbols", CAPTIONS_ICON_TEXTS);
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    if (!state.inCall) return;
+    const pressed = getCaptionsPressedState();
+    if (pressed === "true") {
+      diag('captions on');
+      return;
     }
-  });
+    if (pressed === null) {
+      diag('captions state unknown, not toggling');
+      return;
+    }
+    diag('auto-enabling captions, attempt', attempt);
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  diag('could not turn on captions');
 }
 
 // ---------------------------------------------------------------------------
@@ -100,24 +126,33 @@ function enableCaptionsIfNeeded() {
 // Only processes the third-from-last child of the parent list to avoid
 // double-counting corrected caption blocks (last two slots are non-transcript).
 // ---------------------------------------------------------------------------
+// Polls every 2s rather than attaching once, so captions turned on late, or
+// turned off and back on (Meet replaces the region), are still captured.
 function attachCaptionObserver() {
-  waitForElement('div[role="region"][tabindex="0"]').then((targetNode) => {
-    if (!targetNode) {
-      diag('caption observer: container not found');
-      return;
+  let observedNode = null;
+  const mutationConfig = {
+    childList: true,
+    attributes: true,
+    subtree: true,
+    characterData: true,
+  };
+
+  const tryAttach = () => {
+    if (!state.inCall) return;
+    const region = document.querySelector('div[role="region"][tabindex="0"]');
+    if (!region || region === observedNode) return;
+    if (state.observer) {
+      state.observer.disconnect();
+      flushBuffer();
     }
-    diag('caption observer attached');
-
-    const mutationConfig = {
-      childList: true,
-      attributes: true,
-      subtree: true,
-      characterData: true,
-    };
-
+    observedNode = region;
     state.observer = new MutationObserver(transcriptMutationCallback);
-    state.observer.observe(targetNode, mutationConfig);
-  });
+    state.observer.observe(region, mutationConfig);
+    diag('caption observer attached');
+  };
+
+  tryAttach();
+  state.observerTimer = setInterval(tryAttach, 2000);
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +296,7 @@ function onCallEnd() {
   }
 
   if (state.checkpointTimer) clearInterval(state.checkpointTimer);
+  if (state.observerTimer) clearInterval(state.observerTimer);
   if (state.observer) state.observer.disconnect();
 
   emit({
@@ -291,10 +327,11 @@ function selectElements(selector, text) {
  * Resolves with the first matching element.
  */
 async function waitForElement(selector, text) {
-  if (text) {
+  const texts = text === undefined ? [] : Array.isArray(text) ? text : [text];
+  if (texts.length) {
     while (
-      !Array.from(document.querySelectorAll(selector)).find(
-        (el) => el.textContent === text
+      !Array.from(document.querySelectorAll(selector)).find((el) =>
+        texts.includes(el.textContent)
       )
     ) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -304,9 +341,9 @@ async function waitForElement(selector, text) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
   }
-  return text
-    ? Array.from(document.querySelectorAll(selector)).find(
-        (el) => el.textContent === text
+  return texts.length
+    ? Array.from(document.querySelectorAll(selector)).find((el) =>
+        texts.includes(el.textContent)
       )
     : document.querySelector(selector);
 }
